@@ -2,6 +2,8 @@ const canvas = document.querySelector('#gl-canvas');
 const gl = canvas.getContext('webgl2');
 const app = {}
 
+app.currentlyPressedKeys = {};
+
 function verifyCompilation(shader) {
     var success = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
     if (!success) {
@@ -51,6 +53,12 @@ function initShaders() {
         }
     }
 
+    app.shader.light = {};
+    app.shader.light.pos = gl.getUniformLocation(shaderProgram, 'light.pos');
+    app.shader.light.La = gl.getUniformLocation(shaderProgram, 'light.La');
+    app.shader.light.Ld = gl.getUniformLocation(shaderProgram, 'light.Ld');
+    app.shader.light.Ls = gl.getUniformLocation(shaderProgram, 'light.Ls');
+
     gl.useProgram(shaderProgram);
 }
 
@@ -99,22 +107,27 @@ function putMaterials(mesh) {
 }
 
 function drawScene() {
-    const bunny = app.meshes.bunny;
-
     resizeCanvasToDisplaySize(gl.canvas);
+    app.camera.updateProjectionMatrix();
+
+    const bunny = app.meshes.bunny;
 
     gl.viewport(0.0, 0.0, canvas.width, canvas.height);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    const projectionMatrix = glm.perspective(glm.radians(45.0), canvas.width / canvas.height, 0.1, 100.0);
-    const viewMatrix = glm.lookAt(glm.vec3(-3.0, -3.0, -3.0), glm.vec3(1.0, 1.0, 1.0), glm.vec3(0.0, 0.0, 1.0));
     const modelMatrix = glm.translate(glm.mat4(1.0), glm.vec3(1.0, 1.0, 1.0));
-    const normalToCameraMatrix = glm.mat3(glm.transpose(glm.inverse(glm.mat4(glm.mat3(viewMatrix['*'](modelMatrix))))));
+    const normalToCameraMatrix = glm.mat3(glm.transpose(glm.inverse(glm.mat4(glm.mat3(
+        app.camera.viewMatrix['*'](modelMatrix))))));
 
     putMaterials(bunny);
 
-    gl.uniformMatrix4fv(app.shader.projectionMatrix, false, projectionMatrix.elements);
-    gl.uniformMatrix4fv(app.shader.viewMatrix, false, viewMatrix.elements);
+    gl.uniform3fv(app.shader.light.pos, [4.0, 5.0, 3.0]);
+    gl.uniform3fv(app.shader.light.La, [0.0, 0.0, 0.0]);
+    gl.uniform3fv(app.shader.light.Ld, [1.0, 1.0, 1.0]);
+    gl.uniform3fv(app.shader.light.Ls, [0.5, 0.5, 0.5]);
+
+    gl.uniformMatrix4fv(app.shader.projectionMatrix, false, app.camera.projectionMatrix.elements);
+    gl.uniformMatrix4fv(app.shader.viewMatrix, false, app.camera.viewMatrix.elements);
     gl.uniformMatrix4fv(app.shader.modelMatrix, false, modelMatrix.elements);
     gl.uniformMatrix3fv(app.shader.normalToCameraMatrix, false, normalToCameraMatrix.elements);
 
@@ -125,6 +138,12 @@ function drawScene() {
 function tick() {
     window.requestAnimationFrame(tick);
     drawScene();
+    app.camera.handleKeys(app.currentlyPressedKeys);
+}
+
+function initCamera() {
+    const viewMatrix = glm.lookAt(glm.vec3(4.0, 4.0, 4.0), glm.vec3(1.0, 1.0, 1.0), glm.vec3(0.0, 0.0, 1.0));
+    app.camera = new Camera(viewMatrix, 45.0);
 }
 
 function start(meshes) {
@@ -136,6 +155,7 @@ function start(meshes) {
 
     initShaders();
     initMeshes();
+    initCamera();
 
     gl.clearColor(0.0, 0.0, 0.0, 1);
     gl.enable(gl.DEPTH_TEST);
@@ -153,3 +173,14 @@ window.onload = function () {
     }])
         .then(start)
 };
+
+function handleKeyDown(event) {
+    app.currentlyPressedKeys[event.keyCode] = true;
+}
+
+function handleKeyUp(event) {
+    app.currentlyPressedKeys[event.keyCode] = false;
+}
+
+document.addEventListener('keydown', handleKeyDown);
+document.addEventListener('keyup', handleKeyUp);
